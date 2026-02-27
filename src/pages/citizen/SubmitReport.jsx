@@ -1,386 +1,244 @@
-import { useState, useRef, useEffect } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useState, useRef } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
-import { useReports } from "../../state/ReportsContext";
-import { Toast } from "../../components/ui/Toast";
-import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
-import "leaflet/dist/leaflet.css";
-import L from "leaflet";
-import icon from "leaflet/dist/images/marker-icon.png";
-import iconShadow from "leaflet/dist/images/marker-shadow.png";
+import { useAuth } from "../../context/AuthContext";
+import AudioRecorder from "../../components/AudioRecorder";
 
-let DefaultIcon = L.icon({
-  iconUrl: icon,
-  shadowUrl: iconShadow,
-});
-
-L.Marker.prototype.options.icon = DefaultIcon;
-
-const CATEGORIES = [
-  "Illegal Dumping",
-  "Overflowing Bin",
-  "Plastic Waste",
-  "Construction Debris",
-  "Junkyard/Scrap Pile",
-  "Burning Waste",
-];
-
-const MOCK_LOCATIONS = [
-  { name: "Meenakshi Amman Temple", lat: 9.9195, lng: 78.1193 },
-  { name: "Thirumalai Nayakkar Mahal", lat: 9.9150, lng: 78.1251 },
-  { name: "Vandiyur Mariamman Teppakulam", lat: 9.9142, lng: 78.1491 },
-  { name: "Gandhi Memorial Museum", lat: 9.9322, lng: 78.1384 },
-  { name: "Alagar Kovil", lat: 10.0768, lng: 78.2132 },
-  { name: "Arapalayam", lat: 9.9317, lng: 78.1064 },
-];
-
-function computeSeverity(category) {
-  if (["Burning Waste", "Illegal Dumping", "Construction Debris"].includes(category)) return "High";
-  if (["Overflowing Bin", "Plastic Waste"].includes(category)) return "Medium";
-  return "Low";
-}
-
-function computeAiScore(category) {
-  const base = {
-    "Burning Waste": 90,
-    "Illegal Dumping": 80,
-    "Construction Debris": 70,
-    "Overflowing Bin": 60,
-    "Junkyard/Scrap Pile": 55,
-    "Plastic Waste": 50,
-  };
-  return (base[category] || 50) + Math.floor(Math.random() * 10);
-}
-
-function generateId() {
-  return `REP-${Math.floor(1000 + Math.random() * 9000)}`;
-}
-
-function MapUpdater({ center }) {
-  const map = useMap();
-  useEffect(() => {
-    if (center) {
-      map.flyTo(center, 15);
-    }
-  }, [center, map]);
-  return null;
-}
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 export default function SubmitReport() {
+  const { user } = useAuth();
   const navigate = useNavigate();
-  const { addReport } = useReports();
   const fileRef = useRef(null);
 
-  const [category, setCategory] = useState("");
-  const [locationText, setLocationText] = useState("");
-  const [notes, setNotes] = useState("");
+  // Form state
+  const [audioBlob, setAudioBlob] = useState(null);
+  const [tamilTranscript, setTamilTranscript] = useState("");
   const [imageFile, setImageFile] = useState(null);
-  const [imagePreviewUrl, setImagePreviewUrl] = useState(null);
-  const [errors, setErrors] = useState({});
-  const [toast, setToast] = useState(null);
-  const [submitting, setSubmitting] = useState(false);
+  const [imagePreview, setImagePreview] = useState(null);
+  const [location, setLocation] = useState({ lat: null, lng: null });
 
-  const [mapCenter, setMapCenter] = useState([9.95, 78.15]);
-  const [gpsPin, setGpsPin] = useState(null);
+  // Submit state
+  const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState("");
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState("");
 
-  function handleImageChange(e) {
+  const handleImageSelect = (e) => {
     const file = e.target.files[0];
     if (!file) return;
     setImageFile(file);
-    setImagePreviewUrl(URL.createObjectURL(file));
-  }
+    setImagePreview(URL.createObjectURL(file));
+  };
 
-  function handleGps() {
+  const handleGetLocation = () => {
     if (!navigator.geolocation) {
-      setToast({ message: "Geolocation is not supported by your browser.", type: "error" });
+      setError("Geolocation not supported in this browser.");
       return;
     }
-
+    setProgress("Acquiring GPS location...");
     navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const { latitude, longitude } = position.coords;
-        const latLongStr = `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
-        setLocationText(`Current Location (${latLongStr})`);
-        setGpsPin({ lat: latitude, lng: longitude });
-        setMapCenter([latitude, longitude]);
-        setErrors((p) => ({ ...p, locationText: undefined }));
+      (pos) => {
+        setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        setProgress("");
       },
-      (error) => {
-        setToast({ message: "Failed to get location. Please allow location access.", type: "error" });
+      () => setError("Location access denied. Please allow it.")
+    );
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!audioBlob) return setError("Please record your Tamil speech first.");
+    if (!imageFile) return setError("Please upload an evidence photo.");
+    if (!location.lat) return setError("Please capture your GPS location.");
+    if (!user?.id) return setError("You must be logged in to submit a report.");
+
+    try {
+      setError("");
+      setLoading(true);
+
+      // Step 1: Upload image to Supabase Storage
+      setProgress("Uploading image...");
+      const imageExt = imageFile.name.split(".").pop();
+      const imagePath = `${user.id}/${Date.now()}.${imageExt}`;
+      const { error: imgErr } = await supabase.storage
+        .from("report-images")
+        .upload(imagePath, imageFile, { upsert: true });
+      if (imgErr) throw new Error(`Image upload failed: ${imgErr.message}`);
+      const { data: imgData } = supabase.storage.from("report-images").getPublicUrl(imagePath);
+      const imageUrl = imgData.publicUrl;
+
+      // Step 2: Send audio + metadata to FastAPI for AI analysis and DB insert
+      setProgress("Analyzing with AI (this may take a moment)...");
+      const formData = new FormData();
+      formData.append("audio_file", audioBlob, "recording.webm");
+      formData.append("image_url", imageUrl);
+      formData.append("user_id", user.id);
+      formData.append("latitude", location.lat);
+      formData.append("longitude", location.lng);
+
+      const response = await fetch(`${API_URL}/api/v1/analyze-report`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errBody = await response.json();
+        throw new Error(errBody.detail || "AI analysis failed.");
       }
+
+      const data = await response.json();
+      setResult(data);
+      setProgress("");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleReset = () => {
+    setAudioBlob(null);
+    setTamilTranscript("");
+    setImageFile(null);
+    setImagePreview(null);
+    setLocation({ lat: null, lng: null });
+    setResult(null);
+    setError("");
+    setProgress("");
+  };
+
+  // ── SUCCESS VIEW ──────────────────────────────────────────────────────────
+  if (result) {
+    return (
+      <div className="min-h-screen bg-[#f6f8f8] flex items-center justify-center p-6 font-[Public_Sans,sans-serif]">
+        <div className="bg-white rounded-2xl shadow-xl border border-slate-100 p-10 max-w-md w-full text-center">
+          <div className="size-16 bg-[#13ecc8]/20 rounded-full flex items-center justify-center mx-auto mb-4">
+            <span className="material-symbols-outlined text-[#13ecc8] text-4xl">task_alt</span>
+          </div>
+          <h2 className="text-2xl font-extrabold text-[#0d1b19] mb-1">Report Submitted!</h2>
+          <p className="text-slate-500 text-sm mb-6">Our team has been notified and will act promptly.</p>
+
+          <div className="text-left bg-slate-50 rounded-xl p-5 mb-6 space-y-3 text-sm border border-slate-100">
+            <div><span className="font-bold text-slate-400 uppercase text-xs tracking-wider block">Report ID</span><span className="font-mono text-xs text-slate-600">{result.report_id}</span></div>
+            <div><span className="font-bold text-slate-400 uppercase text-xs tracking-wider block">Tamil Description</span><p className="text-slate-700">{result.tamil_text}</p></div>
+            <div><span className="font-bold text-slate-400 uppercase text-xs tracking-wider block">English Translation</span><p className="text-slate-700">{result.english_text}</p></div>
+            <div className="flex gap-4">
+              <div><span className="font-bold text-slate-400 uppercase text-xs tracking-wider block">Priority</span>
+                <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-bold capitalize ${result.priority === "high" ? "bg-red-100 text-red-600" : result.priority === "medium" ? "bg-amber-100 text-amber-600" : "bg-green-100 text-green-600"}`}>{result.priority}</span>
+              </div>
+              <div><span className="font-bold text-slate-400 uppercase text-xs tracking-wider block">Area</span><span className="text-slate-700">{result.area}</span></div>
+              <div><span className="font-bold text-slate-400 uppercase text-xs tracking-wider block">Ward</span><span className="text-slate-700">{result.ward}</span></div>
+            </div>
+          </div>
+
+          <div className="flex gap-3">
+            <button onClick={handleReset} className="flex-1 h-11 border-2 border-[#13ecc8] text-[#0d1b19] font-bold text-sm rounded-xl hover:bg-[#13ecc8]/10 transition-colors">Submit Another</button>
+            <Link to="/citizen-dashboard" className="flex-1 h-11 bg-[#13ecc8] text-[#0d1b19] font-bold text-sm rounded-xl flex items-center justify-center hover:opacity-90 transition-opacity">Back to Home</Link>
+          </div>
+        </div>
+      </div>
     );
   }
 
-  function validate() {
-    const errs = {};
-    if (!category) errs.category = "Please select a category.";
-    if (!locationText.trim()) errs.locationText = "Please enter a location.";
-    if (!imageFile) errs.image = "Please upload a photo.";
-    return errs;
-  }
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-    const errs = validate();
-    if (Object.keys(errs).length) {
-      setErrors(errs);
-      return;
-    }
-    setSubmitting(true);
-
-    try {
-      // 1. Upload the image to Supabase Storage
-      const fileExt = imageFile.name.split('.').pop();
-      const fileName = `${Math.random().toString(36).substring(2)}_${Date.now()}.${fileExt}`;
-      const filePath = `${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('report-images')
-        .upload(filePath, imageFile);
-
-      if (uploadError) throw uploadError;
-
-      // 2. Get Public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from('report-images')
-        .getPublicUrl(filePath);
-
-      // 3. Prepare payload for ReportsContext -> Supabase
-      const reportPayload = {
-        category,
-        location: locationText,
-        latitude: mapCenter[0],
-        longitude: mapCenter[1],
-        notes,
-        status: "Pending",
-        image_url: publicUrl,
-        // user_id is handled in ReportsContext.jsx
-      };
-
-      const result = await addReport(reportPayload);
-
-      if (result.success) {
-        setToast({ message: "Report submitted successfully!", type: "success" });
-        setTimeout(() => {
-          navigate("/citizen-dashboard");
-        }, 1500);
-      } else {
-        throw result.error;
-      }
-    } catch (error) {
-      console.error(error);
-      setToast({ message: "Failed to submit report. Ensure table policies and buckets exist.", type: "error" });
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
+  // ── FORM VIEW ─────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col min-h-screen bg-[#f6f8f8] font-[Public_Sans,sans-serif] text-[#0d1b19]">
-      {/* Header */}
-      <header className="sticky top-0 z-50 bg-[#f6f8f8]/80 backdrop-blur-md border-b border-[#13ecc8]/10">
-        <div className="max-w-5xl mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="bg-[#13ecc8] p-1.5 rounded-lg flex items-center justify-center">
-              <span className="material-symbols-outlined text-[#0d1b19] text-2xl">location_city</span>
-            </div>
-            <h2 className="text-xl font-bold tracking-tight">Citizen Portal</h2>
-          </div>
-          <nav className="hidden md:flex items-center gap-8">
-            <Link className="text-sm font-semibold hover:text-[#13ecc8] transition-colors" to="/citizen">Home</Link>
-            <span className="text-sm font-semibold text-[#13ecc8]">Report Issue</span>
-            <Link className="text-sm font-semibold hover:text-[#13ecc8] transition-colors" to="/authority">Authority View</Link>
-          </nav>
-        </div>
+    <div className="min-h-screen bg-[#f6f8f8] font-[Public_Sans,sans-serif] text-[#0d1b19]">
+      {/* Nav */}
+      <header className="bg-white border-b border-slate-100 h-14 px-4 flex items-center gap-3 sticky top-0 z-30">
+        <Link to="/citizen-dashboard" className="p-2 rounded-lg hover:bg-slate-100">
+          <span className="material-symbols-outlined text-slate-600">arrow_back</span>
+        </Link>
+        <h1 className="font-bold text-base">Report a Waste Issue</h1>
       </header>
 
-      <main className="flex-grow max-w-3xl mx-auto w-full px-6 py-8">
-        {/* Progress */}
-        <div className="mb-10">
-          <div className="flex justify-between items-center mb-4">
-            <span className="text-xs font-bold uppercase tracking-widest text-[#13ecc8]">Step 2 of 3</span>
-            <span className="text-xs font-bold uppercase tracking-widest opacity-60">Issue Details</span>
-          </div>
-          <div className="h-2 w-full bg-[#13ecc8]/10 rounded-full overflow-hidden">
-            <div className="h-full bg-[#13ecc8] w-[66%] rounded-full" />
-          </div>
-        </div>
+      <main className="max-w-xl mx-auto p-5 mt-4 pb-20">
+        <form onSubmit={handleSubmit} className="space-y-5">
 
-        {/* Title */}
-        <div className="mb-8">
-          <h1 className="text-4xl font-extrabold mb-2">Submit Issue Report</h1>
-          <p className="text-slate-600">Provide details about the waste issue to help us resolve it quickly.</p>
-        </div>
-
-        <form className="space-y-8" onSubmit={handleSubmit} noValidate>
-          {/* Category */}
-          <div className="space-y-3">
-            <label className="block text-sm font-bold uppercase tracking-wider text-[#0d1b19]/70">
-              Issue Category <span className="text-red-500">*</span>
-            </label>
-            <div className="relative">
-              <select
-                value={category}
-                onChange={(e) => { setCategory(e.target.value); setErrors((p) => ({ ...p, category: undefined })); }}
-                className="w-full h-14 bg-white border-2 border-slate-200 rounded-xl px-4 appearance-none focus:ring-2 focus:ring-[#13ecc8] focus:border-[#13ecc8] transition-all text-[#0d1b19]"
-              >
-                <option value="">Select a category</option>
-                {CATEGORIES.map((c) => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-              <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none opacity-50">
-                keyboard_arrow_down
-              </span>
+          {/* Error / Progress */}
+          {error && (
+            <div className="bg-red-50 text-red-600 text-sm p-4 rounded-xl border border-red-100 flex items-center gap-2 font-semibold">
+              <span className="material-symbols-outlined text-base">error</span>{error}
             </div>
-            {errors.category && <p className="text-red-500 text-xs font-medium">{errors.category}</p>}
+          )}
+
+          {/* ── 1. Tamil Speech Recording ── */}
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+            <h2 className="font-bold text-base mb-1 flex items-center gap-2">
+              <span className="material-symbols-outlined text-[#13ecc8]">mic</span>
+              Tamil Voice Description
+            </h2>
+            <p className="text-xs text-slate-500 mb-5">Press the mic and describe the waste issue in Tamil.</p>
+            <AudioRecorder
+              onTranscript={setTamilTranscript}
+              onAudioBlob={setAudioBlob}
+            />
+            {audioBlob && (
+              <div className="mt-3 flex items-center gap-2 text-[#13ecc8] text-xs font-bold">
+                <span className="material-symbols-outlined text-sm">check_circle</span>
+                Audio recorded — ready to submit
+              </div>
+            )}
           </div>
 
-          {/* Location */}
-          <div className="space-y-3">
-            <label className="block text-sm font-bold uppercase tracking-wider text-[#0d1b19]/70">
-              Location <span className="text-red-500">*</span>
-            </label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={locationText}
-                onChange={(e) => { setLocationText(e.target.value); setErrors((p) => ({ ...p, locationText: undefined })); }}
-                placeholder="e.g. Anna Nagar, Sector 4"
-                className="flex-1 h-14 bg-white border-2 border-slate-200 rounded-xl px-4 focus:ring-2 focus:ring-[#13ecc8] focus:border-[#13ecc8] transition-all text-[#0d1b19] placeholder:text-slate-400"
-              />
-              <button
-                type="button"
-                onClick={handleGps}
-                className="h-14 px-4 bg-white border-2 border-slate-200 rounded-xl flex items-center gap-2 hover:border-[#13ecc8] transition-colors text-sm font-bold text-[#4c9a8d]"
-              >
-                <span className="material-symbols-outlined text-[18px]">my_location</span>
-                <span className="hidden sm:inline">Use GPS</span>
-              </button>
-            </div>
-            {errors.locationText && <p className="text-red-500 text-xs font-medium">{errors.locationText}</p>}
-          </div>
-
-          {/* Photo Upload */}
-          <div className="space-y-3">
-            <label className="block text-sm font-bold uppercase tracking-wider text-[#0d1b19]/70">
-              Upload Photo <span className="text-red-500">*</span>
-            </label>
-            <input type="file" accept="image/*" ref={fileRef} onChange={handleImageChange} className="hidden" />
-            {imagePreviewUrl ? (
-              <div className="relative h-48 w-full rounded-xl overflow-hidden border-2 border-[#13ecc8]">
-                <img src={imagePreviewUrl} alt="Preview" className="w-full h-full object-cover" />
-                <button
-                  type="button"
-                  onClick={() => { setImageFile(null); setImagePreviewUrl(null); }}
-                  className="absolute top-2 right-2 bg-black/60 text-white rounded-full p-1 hover:bg-black/80 transition-colors"
-                >
+          {/* ── 2. Image Upload ── */}
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+            <h2 className="font-bold text-base mb-1 flex items-center gap-2">
+              <span className="material-symbols-outlined text-[#13ecc8]">add_photo_alternate</span>
+              Evidence Photo
+            </h2>
+            <p className="text-xs text-slate-500 mb-4">Take or upload a clear photo of the issue.</p>
+            <input type="file" accept="image/*" capture="environment" className="hidden" ref={fileRef} onChange={handleImageSelect} />
+            {imagePreview ? (
+              <div className="relative h-52 rounded-xl overflow-hidden border-2 border-[#13ecc8]">
+                <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
+                <button type="button" onClick={() => { setImageFile(null); setImagePreview(null); }}
+                  className="absolute top-2 right-2 bg-black/60 text-white rounded-full p-1 hover:bg-black/80">
                   <span className="material-symbols-outlined text-[18px]">close</span>
                 </button>
               </div>
             ) : (
-              <button
-                type="button"
-                onClick={() => fileRef.current.click()}
-                className="w-full border-2 border-dashed border-slate-300 rounded-xl p-8 bg-white flex flex-col items-center justify-center gap-4 cursor-pointer hover:border-[#13ecc8] transition-colors"
-              >
-                <div className="w-16 h-16 rounded-full bg-[#13ecc8]/10 flex items-center justify-center">
-                  <span className="material-symbols-outlined text-[#13ecc8] text-3xl">photo_camera</span>
-                </div>
-                <div className="text-center">
-                  <p className="font-bold">Tap to upload or take a photo</p>
-                  <p className="text-sm text-slate-500">Max file size: 5MB</p>
-                </div>
+              <button type="button" onClick={() => fileRef.current.click()}
+                className="w-full h-44 border-2 border-dashed border-slate-300 rounded-xl bg-slate-50 flex flex-col items-center justify-center gap-2 hover:border-[#13ecc8] hover:bg-[#13ecc8]/5 transition-all">
+                <span className="material-symbols-outlined text-4xl text-slate-400">add_photo_alternate</span>
+                <span className="text-sm font-bold text-slate-400">Tap to upload photo</span>
               </button>
             )}
-            {errors.image && <p className="text-red-500 text-xs font-medium">{errors.image}</p>}
           </div>
 
-          {/* Notes */}
-          <div className="space-y-3">
-            <label className="block text-sm font-bold uppercase tracking-wider text-[#0d1b19]/70">
-              Additional Notes <span className="text-slate-400 font-normal normal-case">(optional)</span>
-            </label>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              className="w-full bg-white border-2 border-slate-200 rounded-xl p-4 focus:ring-2 focus:ring-[#13ecc8] focus:border-[#13ecc8] transition-all text-[#0d1b19] placeholder:text-slate-400"
-              placeholder="Tell us more about what's happening..."
-              rows={4}
-            />
-          </div>
-
-          {/* Location Map Widget */}
-          <div className="space-y-3">
-            <label className="block text-sm font-bold uppercase tracking-wider text-[#0d1b19]/70">Select Location on Map</label>
-            <div className="relative w-full h-64 rounded-xl overflow-hidden border-2 border-slate-200 z-0">
-              <MapContainer center={mapCenter} zoom={11} scrollWheelZoom={false} className="w-full h-full z-0">
-                <MapUpdater center={mapCenter} />
-                <TileLayer
-                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                />
-                {MOCK_LOCATIONS.map((loc, idx) => (
-                  <Marker
-                    key={idx}
-                    position={[loc.lat, loc.lng]}
-                    eventHandlers={{ click: () => { setLocationText(loc.name); setErrors((p) => ({ ...p, locationText: undefined })); } }}
-                  >
-                    <Popup className="font-[Public_Sans,sans-serif] font-bold text-[#0d1b19]">
-                      {loc.name}<br />
-                      <span className="text-xs font-normal text-[#4c9a8d]">Click to select</span>
-                    </Popup>
-                  </Marker>
-                ))}
-                {gpsPin && (
-                  <Marker position={[gpsPin.lat, gpsPin.lng]}>
-                    <Popup className="font-[Public_Sans,sans-serif] font-bold text-[#0d1b19]">
-                      Your Current Location<br />
-                      <span className="text-xs font-normal text-[#4c9a8d]">Selected</span>
-                    </Popup>
-                  </Marker>
-                )}
-              </MapContainer>
-              <div className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center justify-center z-[1000] pointer-events-none">
-                <div className="bg-white/90 backdrop-blur px-4 py-2 rounded-full shadow-lg flex items-center gap-2 border border-[#13ecc8]">
-                  <span className="material-symbols-outlined text-[#13ecc8]">location_on</span>
-                  <span className="text-sm font-bold truncate max-w-[200px] sm:max-w-[300px]">
-                    {locationText || "Select a pin on the map"}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Actions */}
-          <div className="flex flex-col sm:flex-row gap-4 pt-6 pb-12">
-            <Link
-              to="/citizen"
-              className="flex-1 h-14 rounded-xl border-2 border-slate-200 font-bold hover:bg-slate-50 transition-colors flex items-center justify-center text-[#0d1b19]"
-            >
-              Cancel
-            </Link>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="flex-[2] h-14 bg-[#13ecc8] text-[#0d1b19] rounded-xl font-extrabold text-lg shadow-lg shadow-[#13ecc8]/20 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-60 disabled:scale-100 flex items-center justify-center gap-2"
-            >
-              {submitting ? (
-                <>
-                  <span className="material-symbols-outlined animate-spin text-[20px]">progress_activity</span>
-                  Submitting...
-                </>
-              ) : (
-                "Submit Report"
-              )}
+          {/* ── 3. GPS Location ── */}
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+            <h2 className="font-bold text-base mb-1 flex items-center gap-2">
+              <span className="material-symbols-outlined text-[#13ecc8]">my_location</span>
+              GPS Location
+            </h2>
+            <p className="text-xs text-slate-500 mb-4">Capture your precise location so we can dispatch help.</p>
+            <button type="button" onClick={handleGetLocation}
+              disabled={!!location.lat}
+              className={`w-full h-12 flex items-center justify-center gap-2 rounded-xl font-bold text-sm border-2 transition-colors ${location.lat ? "bg-[#13ecc8]/10 border-[#13ecc8] text-[#0d1b19] cursor-default" : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"}`}>
+              <span className="material-symbols-outlined">{location.lat ? "location_on" : "location_searching"}</span>
+              {location.lat ? `${location.lat.toFixed(5)}° N, ${location.lng.toFixed(5)}° E` : "Capture My Location"}
             </button>
           </div>
+
+          {/* ── Submit ── */}
+          <button type="submit" disabled={loading}
+            className="w-full h-14 bg-[#13ecc8] text-[#0d1b19] font-extrabold text-lg rounded-2xl shadow-lg hover:opacity-90 transition-opacity disabled:opacity-60 flex items-center justify-center gap-3">
+            {loading ? (
+              <>
+                <span className="material-symbols-outlined animate-spin">progress_activity</span>
+                {progress || "Processing..."}
+              </>
+            ) : (
+              <>
+                <span className="material-symbols-outlined">send</span>
+                Submit Report
+              </>
+            )}
+          </button>
+
         </form>
       </main>
-
-      {toast && (
-        <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />
-      )}
     </div>
   );
 }
