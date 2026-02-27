@@ -6,64 +6,56 @@ from dotenv import load_dotenv
 load_dotenv()
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
-async def analyze_report(tamil_text: str) -> dict:
+
+async def extract_report_details(english_text: str) -> dict:
     """
-    Takes Tamil description, translates to English, then extracts structured report fields.
-    Returns a dict with: description_english, priority, area, ward.
+    Use Gemini to extract structured report details from English description.
+    Returns dict with: priority, area, ward, latitude_hint, longitude_hint.
+    Latitude/longitude are returned as hints (textual) since GPS comes from browser.
     """
     model = genai.GenerativeModel("gemini-1.5-flash")
 
     prompt = f"""
-You are an AI assistant for a city waste management system in Madurai, Tamil Nadu.
+You are an AI system for a city cleanliness management platform in Madurai, Tamil Nadu, India.
 
-The following Tamil text is a citizen's description of a garbage or waste issue:
+A citizen has reported a waste issue. Below is their description in English:
 
-Tamil Text: "{tamil_text}"
+"{english_text}"
 
-Your tasks:
-1. Translate this Tamil text to English.
-2. Based on the translated description, extract the following structured information.
+Extract the following structured information from the text and return ONLY valid JSON (no markdown):
 
-Return ONLY valid JSON in this exact format, no markdown, no explanation:
 {{
-  "description_english": "The English translation of the Tamil text",
   "priority": "high or medium or low",
-  "area": "The area/locality name mentioned (leave as 'unknown' if not mentioned)",
-  "ward": "The ward number or name mentioned (leave as 'unknown' if not mentioned)"
+  "area": "name of the area or locality mentioned (e.g. 'Arapalayam', 'unknown' if not mentioned)",
+  "ward": "ward number or ward name if mentioned (e.g. 'Ward 12', 'unknown' if not mentioned)"
 }}
 
 Priority Rules:
-- "high" → large garbage pile, health risk, near hospital/school, burning waste
-- "medium" → moderate waste accumulation, overflowing bin, plastic waste
-- "low" → small waste, minor complaint
+- "high"   → large heap, health hazard, near hospital/school, burning waste, stray animals
+- "medium" → overflowing bin, moderate plastic waste, blocked drain
+- "low"    → small litter, minor complaint
 """
 
     response = model.generate_content(prompt)
     raw = response.text.strip()
 
-    # Strip markdown code blocks if Gemini wraps output
+    # Strip markdown code fences if present
     if raw.startswith("```"):
-        raw = raw.split("```")[1]
+        parts = raw.split("```")
+        raw = parts[1] if len(parts) > 1 else raw
         if raw.startswith("json"):
-            raw = raw[4:]
+            raw = raw[4:].strip()
 
     try:
         result = json.loads(raw)
     except json.JSONDecodeError:
-        # Fallback in case Gemini returns imperfect JSON
-        result = {
-            "description_english": tamil_text,
-            "priority": "medium",
-            "area": "unknown",
-            "ward": "unknown"
-        }
+        result = {"priority": "medium", "area": "unknown", "ward": "unknown"}
 
-    # Ensure all keys are present and values are valid
-    result.setdefault("description_english", tamil_text)
-    result.setdefault("area", "unknown")
-    result.setdefault("ward", "unknown")
+    # Validate and sanitize
     result["priority"] = result.get("priority", "medium").lower()
     if result["priority"] not in ["low", "medium", "high"]:
         result["priority"] = "medium"
+    result.setdefault("area", "unknown")
+    result.setdefault("ward", "unknown")
 
     return result

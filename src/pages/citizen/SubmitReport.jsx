@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../context/AuthContext";
@@ -10,6 +10,7 @@ export default function SubmitReport() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const fileRef = useRef(null);
+  const audioPlayerRef = useRef(null);
 
   // Form state
   const [audioBlob, setAudioBlob] = useState(null);
@@ -24,6 +25,13 @@ export default function SubmitReport() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
 
+  // Auto-play TTS when result arrives
+  useEffect(() => {
+    if (result?.tts_url && audioPlayerRef.current) {
+      audioPlayerRef.current.play().catch(() => { });
+    }
+  }, [result]);
+
   const handleImageSelect = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -32,17 +40,11 @@ export default function SubmitReport() {
   };
 
   const handleGetLocation = () => {
-    if (!navigator.geolocation) {
-      setError("Geolocation not supported in this browser.");
-      return;
-    }
+    if (!navigator.geolocation) { setError("Geolocation not supported."); return; }
     setProgress("Acquiring GPS location...");
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-        setProgress("");
-      },
-      () => setError("Location access denied. Please allow it.")
+      (pos) => { setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }); setProgress(""); },
+      () => setError("Location access denied.")
     );
   };
 
@@ -51,11 +53,10 @@ export default function SubmitReport() {
     if (!audioBlob) return setError("Please record your Tamil speech first.");
     if (!imageFile) return setError("Please upload an evidence photo.");
     if (!location.lat) return setError("Please capture your GPS location.");
-    if (!user?.id) return setError("You must be logged in to submit a report.");
+    if (!user?.id) return setError("You must be logged in.");
 
     try {
-      setError("");
-      setLoading(true);
+      setError(""); setLoading(true);
 
       // Step 1: Upload image to Supabase Storage
       setProgress("Uploading image...");
@@ -69,7 +70,7 @@ export default function SubmitReport() {
       const imageUrl = imgData.publicUrl;
 
       // Step 2: Send audio + metadata to FastAPI for AI analysis and DB insert
-      setProgress("Analyzing with AI (this may take a moment)...");
+      setProgress("Analyzing speech with AI (30–60 seconds)...");
       const formData = new FormData();
       formData.append("audio_file", audioBlob, "recording.webm");
       formData.append("image_url", imageUrl);
@@ -93,19 +94,14 @@ export default function SubmitReport() {
     } catch (err) {
       setError(err.message);
     } finally {
-      setLoading(false);
+      setLoading(false); setProgress("");
     }
   };
 
   const handleReset = () => {
-    setAudioBlob(null);
-    setTamilTranscript("");
-    setImageFile(null);
-    setImagePreview(null);
-    setLocation({ lat: null, lng: null });
-    setResult(null);
-    setError("");
-    setProgress("");
+    setAudioBlob(null); setTamilTranscript(""); setImageFile(null);
+    setImagePreview(null); setLocation({ lat: null, lng: null });
+    setResult(null); setError(""); setProgress("");
   };
 
   // ── SUCCESS VIEW ──────────────────────────────────────────────────────────
@@ -117,18 +113,33 @@ export default function SubmitReport() {
             <span className="material-symbols-outlined text-[#13ecc8] text-4xl">task_alt</span>
           </div>
           <h2 className="text-2xl font-extrabold text-[#0d1b19] mb-1">Report Submitted!</h2>
-          <p className="text-slate-500 text-sm mb-6">Our team has been notified and will act promptly.</p>
+          <p className="text-slate-500 text-sm mb-4">Our team has been notified and will act promptly.</p>
+
+          {/* Sarvam TTS Audio Playback */}
+          {result.tts_url && (
+            <div className="mb-5 bg-[#13ecc8]/10 border border-[#13ecc8]/30 rounded-xl p-4">
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 flex items-center justify-center gap-1">
+                <span className="material-symbols-outlined text-sm text-[#13ecc8]">volume_up</span>
+                AI Voice Summary (English)
+              </p>
+              <audio ref={audioPlayerRef} src={result.tts_url} controls className="w-full h-10 rounded-lg" />
+            </div>
+          )}
 
           <div className="text-left bg-slate-50 rounded-xl p-5 mb-6 space-y-3 text-sm border border-slate-100">
             <div><span className="font-bold text-slate-400 uppercase text-xs tracking-wider block">Report ID</span><span className="font-mono text-xs text-slate-600">{result.report_id}</span></div>
             <div><span className="font-bold text-slate-400 uppercase text-xs tracking-wider block">Tamil Description</span><p className="text-slate-700">{result.tamil_text}</p></div>
             <div><span className="font-bold text-slate-400 uppercase text-xs tracking-wider block">English Translation</span><p className="text-slate-700">{result.english_text}</p></div>
-            <div className="flex gap-4">
+            <div className="flex gap-4 flex-wrap">
               <div><span className="font-bold text-slate-400 uppercase text-xs tracking-wider block">Priority</span>
                 <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-bold capitalize ${result.priority === "high" ? "bg-red-100 text-red-600" : result.priority === "medium" ? "bg-amber-100 text-amber-600" : "bg-green-100 text-green-600"}`}>{result.priority}</span>
               </div>
               <div><span className="font-bold text-slate-400 uppercase text-xs tracking-wider block">Area</span><span className="text-slate-700">{result.area}</span></div>
               <div><span className="font-bold text-slate-400 uppercase text-xs tracking-wider block">Ward</span><span className="text-slate-700">{result.ward}</span></div>
+            </div>
+            <div className="flex gap-4">
+              <div><span className="font-bold text-slate-400 uppercase text-xs tracking-wider block">Latitude</span><span className="font-mono text-xs text-slate-600">{result.latitude?.toFixed(5)}</span></div>
+              <div><span className="font-bold text-slate-400 uppercase text-xs tracking-wider block">Longitude</span><span className="font-mono text-xs text-slate-600">{result.longitude?.toFixed(5)}</span></div>
             </div>
           </div>
 
