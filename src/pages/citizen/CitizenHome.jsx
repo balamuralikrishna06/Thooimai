@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { useReports } from "../../state/ReportsContext";
-import { useAuth } from "../../state/AuthContext";
+import { useAuth } from "../../context/AuthContext";
 import { ReportCard } from "../../components/ui/ReportCard";
 
 export default function CitizenHome() {

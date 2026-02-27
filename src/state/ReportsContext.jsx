@@ -1,89 +1,108 @@
-import { createContext, useContext, useReducer } from "react";
-
-const SAMPLE_REPORTS = [
-  {
-    id: "REP-1092",
-    category: "Illegal Dumping",
-    locationText: "Anna Nagar, Sector 4",
-    createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-    status: "Reported",
-    aiUrgencyScore: 87,
-    severity: "High",
-    imagePreviewUrl: "https://lh3.googleusercontent.com/aida-public/AB6AXuB8DCX33brOxbWNDkJwyncWvsjs7ICr_xaSfkg7hv58BHn5eYJlGqtwRoAF1u02ES0wib1nPudsCczHt62jI1UBXHEQ7YOGljizR9iobi0KHj9LM3gHTGAd-Hj6t7E63moOJbCAGazEnuEm7M4AMSnMegDNezO72LhuxIrhbQUVlasj3ZJtjQWjEE3j7nZlB8sYSJxDBoph-Fcp0SZWdluqp_QRwNblg5_UuldARBFWtmfzNsu2MoLaPiomszjHMyWpt9VSrfEgJ5bj",
-    notes: "Large pile of waste dumped overnight near the park entrance.",
-  },
-  {
-    id: "REP-1091",
-    category: "Overflowing Bin",
-    locationText: "Race Course Road",
-    createdAt: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
-    status: "In Progress",
-    aiUrgencyScore: 62,
-    severity: "Medium",
-    imagePreviewUrl: "https://lh3.googleusercontent.com/aida-public/AB6AXuBrGSBJveKNJ_-qikrLda53DDbozgNGzTRNe_6_TwFyLgdXKjNSStZ94GwQt_SK5oUpA9kPIh_83ULjd-Q3tzkG-INvOouXdw-PMBFFDk8LRsoNMgA9roqoGhqTe438CeyyKFgcNoMPcLlveac3Rko7lOfZBywpSoOteucyHvfZvjbpK02QKxcZBfQbo7Aj2svyIrPP-GU_iPjqK_mRMXlLpxXuow9jiNiISO27vOEz7gYuUFmyaaUzbqswlrDNrK7cqta2kpGBmuZB",
-    notes: "",
-  },
-  {
-    id: "REP-1088",
-    category: "Plastic Waste",
-    locationText: "Meenakshi Nagar",
-    createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-    status: "Resolved",
-    aiUrgencyScore: 55,
-    severity: "Medium",
-    imagePreviewUrl: "https://lh3.googleusercontent.com/aida-public/AB6AXuC3bMh-VqzFX6g4GKeSjcykWRrcDIsc5IfDmzzz787yVXdZQbBXrL267IHwPYtOVv3y6aPZQkoB2ghNm7jMT4_qi3jVe79d89Fs7qVdYOE1seJhaLxROXS5GAeFV0F6qoph59nq0Kp4If3xHVs2hxdJk6Ne7x_gxFwZYWdX0ulVzDwm_vbh9VzzVttpmDqAKolzfRVxbqXjN0u_-kBFY9KRMOxxvzu0LuWBIMkG4m3PahKZR9VuCOOnlC6g5amf0PW1tgOlxwZFXlF9",
-    notes: "",
-  },
-  {
-    id: "REP-1085",
-    category: "Construction Debris",
-    locationText: "K.K. Nagar Main Road",
-    createdAt: new Date(Date.now() - 26 * 60 * 60 * 1000).toISOString(),
-    status: "Reported",
-    aiUrgencyScore: 78,
-    severity: "High",
-    imagePreviewUrl: "https://lh3.googleusercontent.com/aida-public/AB6AXuDY5Al3QTirIE_xFeup35YngP3iTZMPYeDqjTMIHR61NVdUhe3TkdVB_cpJM1dMbXlik7MqSoi6Y9YvzB71HWcdb6fEo5XJlg4p5FKc-ITCJm7tRp8zanM-Ybe5-QGJMB01pmEF1vq9Z3dlWO2FXVDdgoKZ6h7g3xPChmAWLry5jQznr5x8rDwyrL92KUA-HS4i4FtdzMpmaUSsR6v_zYSETr-9F4EaakhYghJZFy-TDg727uFhQCWJg6B-fgdxKL2VDtkf_03EW5dL",
-    notes: "",
-  },
-  {
-    id: "REP-1082",
-    category: "Burning Waste",
-    locationText: "Sellur Riverbed",
-    createdAt: new Date(Date.now() - 30 * 60 * 60 * 1000).toISOString(),
-    status: "In Progress",
-    aiUrgencyScore: 95,
-    severity: "High",
-    imagePreviewUrl: "https://lh3.googleusercontent.com/aida-public/AB6AXuB8DCX33brOxbWNDkJwyncWvsjs7ICr_xaSfkg7hv58BHn5eYJlGqtwRoAF1u02ES0wib1nPudsCczHt62jI1UBXHEQ7YOGljizR9iobi0KHj9LM3gHTGAd-Hj6t7E63moOJbCAGazEnuEm7M4AMSnMegDNezO72LhuxIrhbQUVlasj3ZJtjQWjEE3j7nZlB8sYSJxDBoph-Fcp0SZWdluqp_QRwNblg5_UuldARBFWtmfzNsu2MoLaPiomszjHMyWpt9VSrfEgJ5bj",
-    notes: "Toxic fumes visible. Residents complaining.",
-  },
-];
+import { createContext, useContext, useState, useEffect } from "react";
+import { supabase } from "../lib/supabase";
+import { useAuth } from "../context/AuthContext";
 
 const ReportsContext = createContext(null);
 
-function reportsReducer(state, action) {
-  switch (action.type) {
-    case "ADD_REPORT":
-      return { ...state, reports: [action.payload, ...state.reports] };
-    case "UPDATE_STATUS":
-      return {
-        ...state,
-        reports: state.reports.map((r) =>
-          r.id === action.payload.id ? { ...r, status: action.payload.status } : r
-        ),
-      };
-    default:
-      return state;
-  }
-}
-
 export function ReportsProvider({ children }) {
-  const [state, dispatch] = useReducer(reportsReducer, { reports: SAMPLE_REPORTS });
+  const [reports, setReports] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const { user, role } = useAuth();
 
-  const addReport = (report) => dispatch({ type: "ADD_REPORT", payload: report });
-  const updateStatus = (id, status) => dispatch({ type: "UPDATE_STATUS", payload: { id, status } });
+  // Fetch reports based on Role
+  const fetchReports = async () => {
+    if (!user) return;
+    setLoading(true);
+
+    let query = supabase.from('issue_reports').select(`
+      *,
+      users:user_id (name, email),
+      worker:assigned_worker_id (name, email)
+    `).order('created_at', { ascending: false });
+
+    // Apply role-based filtering if RLS isn't strictly relied upon for all UI states
+    if (role === 'citizen') {
+      query = query.eq('user_id', user.uid);
+    } else if (role === 'worker') {
+      query = query.eq('assigned_worker_id', user.uid);
+    }
+    // Admin sees all, no additional filter needed
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error("Error fetching reports:", error);
+    } else {
+      setReports(data || []);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    // Only fetch once user and role are established
+    if (user && role) {
+      fetchReports();
+    } else {
+      setReports([]); // Clear reports if logged out
+    }
+  }, [user, role]);
+
+  const addReport = async (reportData) => {
+    try {
+      const { data, error } = await supabase
+        .from('issue_reports')
+        .insert([{ ...reportData, user_id: user.uid }])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Update local state instantly
+      setReports(prev => [data, ...prev]);
+      return { success: true, data };
+    } catch (error) {
+      console.error("Error adding report:", error);
+      return { success: false, error };
+    }
+  };
+
+  const updateStatus = async (id, status) => {
+    try {
+      const { error } = await supabase
+        .from('issue_reports')
+        .update({ status })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      // Update local state instantly
+      setReports(prev => prev.map(r => r.id === id ? { ...r, status } : r));
+      return { success: true };
+    } catch (error) {
+      console.error("Error updating status:", error);
+      return { success: false, error };
+    }
+  };
+
+  const assignWorker = async (reportId, workerId) => {
+    try {
+      // Must be Admin to do this (enforced by RLS)
+      const { error } = await supabase
+        .from('issue_reports')
+        .update({ assigned_worker_id: workerId, status: 'Assigned' })
+        .eq('id', reportId);
+
+      if (error) throw error;
+      fetchReports(); // Refresh to get the nested worker profile data
+      return { success: true };
+    } catch (error) {
+      console.error("Error assigning worker", error);
+      return { success: false, error };
+    }
+  };
 
   return (
-    <ReportsContext.Provider value={{ reports: state.reports, addReport, updateStatus }}>
+    <ReportsContext.Provider value={{ reports, loading, fetchReports, addReport, updateStatus, assignWorker }}>
       {children}
     </ReportsContext.Provider>
   );

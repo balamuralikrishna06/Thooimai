@@ -1,7 +1,13 @@
 import { createContext, useContext, useEffect, useState } from "react";
-import { auth, googleProvider, setupRecaptcha } from "../firebase";
-import { signInWithPopup, signOut, onAuthStateChanged, signInWithPhoneNumber } from "firebase/auth";
-import { supabase } from "../supabase";
+import { auth, googleProvider } from "../firebase";
+import {
+    signInWithEmailAndPassword,
+    createUserWithEmailAndPassword,
+    signInWithPopup,
+    signOut,
+    onAuthStateChanged
+} from "firebase/auth";
+import { supabase } from "../lib/supabase";
 
 const AuthContext = createContext();
 
@@ -11,79 +17,99 @@ export function useAuth() {
 
 export function AuthProvider({ children }) {
     const [user, setUser] = useState(null);
+    const [role, setRole] = useState(null);
     const [loading, setLoading] = useState(true);
 
-    // Sync Firebase User with Supabase Database
-    const syncUserToSupabase = async (firebaseUser) => {
-        if (!firebaseUser) return;
-
+    // Fetch the user's role from the public.users table in Supabase
+    const fetchUserRole = async (userId) => {
         try {
-            // Check if user already exists
-            const { data: existingUser, error: fetchError } = await supabase
+            const { data, error } = await supabase
                 .from('users')
-                .select('*')
-                .eq('firebase_uid', firebaseUser.uid)
+                .select('role')
+                .eq('id', userId)
                 .single();
 
-            if (fetchError && fetchError.code !== 'PGRST116') {
-                console.error("Error fetching user from Supabase:", fetchError);
-                return;
+            if (error && error.code !== 'PGRST116') {
+                console.error("Error fetching user role:", error);
+                return null;
             }
-
-            // If user doesn't exist, insert them
-            if (!existingUser) {
-                const { error: insertError } = await supabase
-                    .from('users')
-                    .insert([
-                        {
-                            firebase_uid: firebaseUser.uid,
-                            name: firebaseUser.displayName || "Unknown User",
-                            email: firebaseUser.email || null,
-                            phone: firebaseUser.phoneNumber || null,
-                            role: 'citizen'
-                        }
-                    ]);
-
-                if (insertError) {
-                    console.error("Error inserting user into Supabase:", insertError);
-                } else {
-                    console.log("User successfully synced to Supabase database.");
-                }
-            }
+            return data ? data.role : 'citizen'; // Default to citizen if not found
         } catch (err) {
-            console.error("Failed to sync user to Supabase:", err);
+            console.error("Failed to fetch role:", err);
+            return null;
         }
     };
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-            setUser(currentUser);
-
-            // If a user just logged in, sync their data to Supabase
             if (currentUser) {
-                await syncUserToSupabase(currentUser);
+                setUser(currentUser);
+                const userRole = await fetchUserRole(currentUser.uid);
+                setRole(userRole);
+            } else {
+                setUser(null);
+                setRole(null);
             }
-
             setLoading(false);
         });
-        return unsubscribe;
+
+        return () => {
+            unsubscribe();
+        };
     }, []);
 
-    const loginWithGoogle = async () => {
+    const loginWithEmail = async (email, password) => {
         try {
-            await signInWithPopup(auth, googleProvider);
+            const userCredential = await signInWithEmailAndPassword(auth, email, password);
+            return userCredential.user;
         } catch (error) {
-            console.error("Error logging in with Google:", error);
             throw error;
         }
     };
 
-    const loginWithPhone = async (phoneNumber, appVerifier) => {
+    const signUpWithEmail = async (email, password, name) => {
         try {
-            const confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, appVerifier);
-            return confirmationResult;
+            const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+            const user = userCredential.user;
+
+            // Ensure user row exists in Supabase
+            if (user) {
+                const { error: insertError } = await supabase.from('users').upsert({
+                    id: user.uid,
+                    name: name,
+                    email: email,
+                    role: 'citizen'
+                });
+                if (insertError) console.error("Error inserting user:", insertError);
+            }
+
+            return user;
         } catch (error) {
-            console.error("Error sending OTP:", error);
+            throw error;
+        }
+    };
+
+    const loginWithGoogle = async () => {
+        try {
+            const userCredential = await signInWithPopup(auth, googleProvider);
+            const user = userCredential.user;
+
+            // Check if user exists in Supabase, if not insert default role
+            if (user) {
+                const { data, error } = await supabase.from('users').select('id').eq('id', user.uid).single();
+                if (!data) {
+                    const { error: insertError } = await supabase.from('users').upsert({
+                        id: user.uid,
+                        name: user.displayName || "Google User",
+                        email: user.email,
+                        role: 'citizen'
+                    });
+                    if (insertError) console.error("Error inserting user:", insertError);
+                }
+            }
+
+            return user;
+        } catch (error) {
             throw error;
         }
     };
@@ -98,9 +124,10 @@ export function AuthProvider({ children }) {
 
     const value = {
         user,
+        role,
+        loginWithEmail,
+        signUpWithEmail,
         loginWithGoogle,
-        loginWithPhone,
-        setupRecaptcha,
         logout,
     };
 

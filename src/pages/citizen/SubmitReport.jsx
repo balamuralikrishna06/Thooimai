@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import { supabase } from "../../lib/supabase";
 import { useReports } from "../../state/ReportsContext";
 import { Toast } from "../../components/ui/Toast";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
@@ -126,27 +127,52 @@ export default function SubmitReport() {
       return;
     }
     setSubmitting(true);
-    await new Promise((r) => setTimeout(r, 600)); // simulate async
 
-    const report = {
-      id: generateId(),
-      category,
-      locationText,
-      notes,
-      createdAt: new Date().toISOString(),
-      status: "Reported",
-      aiUrgencyScore: computeAiScore(category),
-      severity: computeSeverity(category),
-      imagePreviewUrl,
-    };
+    try {
+      // 1. Upload the image to Supabase Storage
+      const fileExt = imageFile.name.split('.').pop();
+      const fileName = `${Math.random().toString(36).substring(2)}_${Date.now()}.${fileExt}`;
+      const filePath = `${fileName}`;
 
-    addReport(report);
-    setToast({ message: "Report submitted successfully!", type: "success" });
-    setSubmitting(false);
+      const { error: uploadError } = await supabase.storage
+        .from('report-images')
+        .upload(filePath, imageFile);
 
-    setTimeout(() => {
-      navigate("/citizen");
-    }, 1500);
+      if (uploadError) throw uploadError;
+
+      // 2. Get Public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('report-images')
+        .getPublicUrl(filePath);
+
+      // 3. Prepare payload for ReportsContext -> Supabase
+      const reportPayload = {
+        category,
+        location: locationText,
+        latitude: mapCenter[0],
+        longitude: mapCenter[1],
+        notes,
+        status: "Pending",
+        image_url: publicUrl,
+        // user_id is handled in ReportsContext.jsx
+      };
+
+      const result = await addReport(reportPayload);
+
+      if (result.success) {
+        setToast({ message: "Report submitted successfully!", type: "success" });
+        setTimeout(() => {
+          navigate("/citizen-dashboard");
+        }, 1500);
+      } else {
+        throw result.error;
+      }
+    } catch (error) {
+      console.error(error);
+      setToast({ message: "Failed to submit report. Ensure table policies and buckets exist.", type: "error" });
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (

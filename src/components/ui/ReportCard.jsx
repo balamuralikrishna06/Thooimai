@@ -31,24 +31,24 @@ export function ReportCard({ report }) {
           </div>
           <div>
             <h3 className="font-bold text-navy text-lg">{report.category}</h3>
-            <p className="text-xs text-[#4c9a8d] font-medium">{report.locationText}</p>
+            <p className="text-xs text-[#4c9a8d] font-medium">{report.location}</p>
           </div>
         </div>
         <Badge variant={report.status}>{report.status}</Badge>
       </div>
 
       <div className="flex gap-2 mb-4">
-        <Badge variant={report.severity}>Severity: {report.severity}</Badge>
+        <Badge variant={report.severity || "Medium"}>Severity: {report.severity || "Medium"}</Badge>
         <span className="flex items-center gap-1 px-2 py-0.5 bg-slate-50 rounded-md border border-slate-100 text-[10px] font-bold text-[#4c9a8d] uppercase">
           <span className="material-symbols-outlined text-[12px]">recycling</span>
-          AI Score: {report.aiUrgencyScore}
+          AI Score: {report.ai_urgency_score || 50}
         </span>
       </div>
 
-      {report.imagePreviewUrl && (
+      {report.image_url && (
         <div className="h-40 w-full rounded-lg bg-slate-100 mb-4 overflow-hidden">
           <img
-            src={report.imagePreviewUrl}
+            src={report.image_url}
             alt={report.category}
             className="w-full h-full object-cover"
           />
@@ -58,9 +58,11 @@ export function ReportCard({ report }) {
       <div className="flex items-center justify-between text-xs text-[#4c9a8d]">
         <span className="flex items-center gap-1">
           <span className="material-symbols-outlined text-sm">schedule</span>
-          Reported {timeAgo(report.createdAt)}
+          Reported {timeAgo(report.created_at)}
         </span>
-        <span className="font-mono font-bold opacity-60">{report.id}</span>
+        <span className="font-mono font-bold opacity-60 text-[10px]" title={report.id}>
+          {report.id.slice(0, 8)}...
+        </span>
       </div>
     </div>
   );
