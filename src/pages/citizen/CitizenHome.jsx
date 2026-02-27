@@ -39,7 +39,7 @@ export default function CitizenHome() {
             />
           </div>
           <Link
-            to="/citizen/report"
+            to="/citizen-dashboard/report"
             className="hidden md:flex items-center justify-center rounded-xl h-10 px-5 bg-[#13ecc8] text-[#0d1b19] text-sm font-bold shadow-sm hover:opacity-90 transition-opacity"
           >
             Report Issue
@@ -84,7 +84,7 @@ export default function CitizenHome() {
           </p>
           <div className="flex justify-center">
             <Link
-              to="/citizen/report"
+              to="/citizen-dashboard/report"
               className="flex items-center justify-center gap-3 rounded-xl h-14 px-8 bg-[#13ecc8] text-[#0d1b19] text-lg font-bold shadow-lg hover:scale-[1.02] transition-transform"
             >
               <span className="material-symbols-outlined">campaign</span>
@@ -128,7 +128,7 @@ export default function CitizenHome() {
           <span className="material-symbols-outlined">home</span>
           <span className="text-[10px] font-bold uppercase tracking-wider">Home</span>
         </a>
-        <Link className="flex flex-col items-center gap-1 text-[#4c9a8d]" to="/citizen/report">
+        <Link className="flex flex-col items-center gap-1 text-[#4c9a8d]" to="/citizen-dashboard/report">
           <span className="material-symbols-outlined">add_circle</span>
           <span className="text-[10px] font-bold uppercase tracking-wider">Report</span>
         </Link>
