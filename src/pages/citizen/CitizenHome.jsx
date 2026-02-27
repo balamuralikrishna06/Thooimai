@@ -1,9 +1,11 @@
 import { Link } from "react-router-dom";
 import { useReports } from "../../state/ReportsContext";
+import { useAuth } from "../../state/AuthContext";
 import { ReportCard } from "../../components/ui/ReportCard";
 
 export default function CitizenHome() {
   const { reports } = useReports();
+  const { user, loginWithGoogle, logout } = useAuth();
 
   const resolved = reports.filter((r) => r.status === "Resolved").length;
   const active = reports.filter((r) => r.status !== "Resolved").length;
@@ -42,10 +44,32 @@ export default function CitizenHome() {
           >
             Report Issue
           </Link>
-          <div
-            className="size-10 rounded-full border-2 border-[#13ecc8]/20 bg-cover bg-center"
-            style={{ backgroundImage: "url('https://lh3.googleusercontent.com/aida-public/AB6AXuBPP7XsO6CLiA9__KAY6s1axsOyL9Dk5IYkikO5D8qXR-iCuCO_xE8W2IAGcAxBm-WyOEP3XZr4o-dmNJ4THdLn4way28Io4AFZ4NjVGJfIDQNsnxiVaPqWOSmyHmYlPXzOp6kplBPio-UQR5TnDa2Cp20lxe4RxX24jWKxlLV8wO3k5k5wvzFXDPVwNKgFohTRAOFjqVKQnGeFed1DSg0IEn94GI6N1w7LAlES-wPMBYMdOCQNSQPruJUcQQjGW3wESz67LxNFYngT')" }}
-          />
+          {user ? (
+            <div className="relative group">
+              <img
+                src={user.photoURL}
+                alt={user.displayName}
+                className="size-10 rounded-full border-2 border-[#13ecc8]/50 object-cover cursor-pointer hover:border-[#13ecc8] transition-colors"
+                title={user.displayName}
+              />
+              <div className="absolute right-0 mt-2 w-32 bg-white rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 border border-[#4c9a8d]/10">
+                <button
+                  onClick={logout}
+                  className="w-full text-left px-4 py-2 text-sm text-red-600 font-bold hover:bg-gray-50 rounded-lg"
+                >
+                  Logout
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={loginWithGoogle}
+              className="flex items-center justify-center gap-2 rounded-xl h-10 px-5 bg-white border border-[#4c9a8d]/20 text-[#0d1b19] text-sm font-bold shadow-sm hover:bg-gray-50 transition-colors"
+            >
+              <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="size-4" />
+              Login
+            </button>
+          )}
         </div>
       </header>
 

@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useReports } from "../../state/ReportsContext";
+import { useAuth } from "../../state/AuthContext";
 import { Badge } from "../../components/ui/Badge";
 
 const CATEGORIES = [
@@ -72,6 +73,7 @@ function StatusAction({ report, onUpdate }) {
 
 export default function AuthorityDashboard() {
   const { reports, updateStatus } = useReports();
+  const { user, loginWithGoogle, logout } = useAuth();
   const [searchLocation, setSearchLocation] = useState("");
   const [filterStatus, setFilterStatus] = useState("All");
   const [filterCategory, setFilterCategory] = useState("All");
@@ -118,11 +120,10 @@ export default function AuthorityDashboard() {
             <a
               key={label}
               href="#"
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
-                active
-                  ? "bg-[#13ecc8]/10 text-[#13ecc8]"
-                  : "text-slate-600 hover:bg-slate-50"
-              }`}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${active
+                ? "bg-[#13ecc8]/10 text-[#13ecc8]"
+                : "text-slate-600 hover:bg-slate-50"
+                }`}
             >
               <span className="material-symbols-outlined text-[20px]">{icon}</span>
               <span className="text-sm font-medium">{label}</span>
@@ -170,14 +171,37 @@ export default function AuthorityDashboard() {
             </button>
             <div className="h-8 w-[1px] bg-slate-200" />
             <div className="flex items-center gap-3">
-              <div className="text-right">
-                <p className="text-xs font-bold text-[#0d1b19] uppercase tracking-tight">Rajesh Kumar</p>
-                <p className="text-[10px] text-slate-500 font-medium">Zone 4 Authority</p>
-              </div>
-              <div
-                className="size-9 rounded-full bg-slate-200 bg-center bg-cover border border-slate-200"
-                style={{ backgroundImage: "url('https://lh3.googleusercontent.com/aida-public/AB6AXuAslvRC4ZjFbCWA-NMOzdC08YhDH8H8jtr-owHhjxl-eP8RC_nNrlxBeLVXRKQDvhPK8NS2uY9nw_5CpLF79-3LLnp0cXi7owYJpcYWtjZIzYSbUtZ-Jb4M0h6fNeL-DlihVkKsDqXuAVYoHGbeDgJS4DdtU6Z5IfnO_O0D0onKIvMdoOk5fGhopxHYKGm7Y0CYXVLddgzemfjZhxo1nx6zVeNn56GDnyiussAxHYaeBc6GYpavaaayHvJ5Tpt3_6RP9JHdPUhd8D6V')" }}
-              />
+              {user ? (
+                <>
+                  <div className="text-right">
+                    <p className="text-xs font-bold text-[#0d1b19] uppercase tracking-tight">{user.displayName}</p>
+                    <p className="text-[10px] text-slate-500 font-medium">Zone 4 Authority</p>
+                  </div>
+                  <div className="relative group">
+                    <img
+                      src={user.photoURL}
+                      alt={user.displayName}
+                      className="size-9 rounded-full bg-slate-200 object-cover border border-slate-200 cursor-pointer"
+                    />
+                    <div className="absolute right-0 mt-2 w-32 bg-white rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 border border-[#4c9a8d]/10">
+                      <button
+                        onClick={logout}
+                        className="w-full text-left px-4 py-2 text-sm text-red-600 font-bold hover:bg-gray-50 rounded-lg"
+                      >
+                        Logout
+                      </button>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <button
+                  onClick={loginWithGoogle}
+                  className="flex items-center justify-center gap-2 rounded-xl h-9 px-4 bg-white border border-[#4c9a8d]/20 text-[#0d1b19] text-xs font-bold shadow-sm hover:bg-gray-50 transition-colors"
+                >
+                  <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="size-3" />
+                  Authority Login
+                </button>
+              )}
             </div>
           </div>
         </header>
@@ -296,11 +320,10 @@ export default function AuthorityDashboard() {
                   <button
                     key={p}
                     onClick={() => setPage(p)}
-                    className={`px-3 py-1 rounded border text-xs font-bold transition-colors ${
-                      p === page
-                        ? "bg-slate-100 border-slate-200 text-[#0d1b19]"
-                        : "border-slate-200 text-slate-500 hover:bg-slate-50"
-                    }`}
+                    className={`px-3 py-1 rounded border text-xs font-bold transition-colors ${p === page
+                      ? "bg-slate-100 border-slate-200 text-[#0d1b19]"
+                      : "border-slate-200 text-slate-500 hover:bg-slate-50"
+                      }`}
                   >
                     {p}
                   </button>
