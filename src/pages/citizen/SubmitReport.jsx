@@ -1,7 +1,19 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useReports } from "../../state/ReportsContext";
 import { Toast } from "../../components/ui/Toast";
+import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
+import "leaflet/dist/leaflet.css";
+import L from "leaflet";
+import icon from "leaflet/dist/images/marker-icon.png";
+import iconShadow from "leaflet/dist/images/marker-shadow.png";
+
+let DefaultIcon = L.icon({
+  iconUrl: icon,
+  shadowUrl: iconShadow,
+});
+
+L.Marker.prototype.options.icon = DefaultIcon;
 
 const CATEGORIES = [
   "Illegal Dumping",
@@ -13,12 +25,12 @@ const CATEGORIES = [
 ];
 
 const MOCK_LOCATIONS = [
-  "Anna Nagar, Sector 4",
-  "Race Course Road",
-  "Meenakshi Nagar",
-  "K.K. Nagar Main Road",
-  "Goripalayam Junction",
-  "Teppakulam East Street",
+  { name: "Meenakshi Amman Temple", lat: 9.9195, lng: 78.1193 },
+  { name: "Thirumalai Nayakkar Mahal", lat: 9.9150, lng: 78.1251 },
+  { name: "Vandiyur Mariamman Teppakulam", lat: 9.9142, lng: 78.1491 },
+  { name: "Gandhi Memorial Museum", lat: 9.9322, lng: 78.1384 },
+  { name: "Alagar Kovil", lat: 10.0768, lng: 78.2132 },
+  { name: "Arapalayam", lat: 9.9317, lng: 78.1064 },
 ];
 
 function computeSeverity(category) {
@@ -43,6 +55,16 @@ function generateId() {
   return `REP-${Math.floor(1000 + Math.random() * 9000)}`;
 }
 
+function MapUpdater({ center }) {
+  const map = useMap();
+  useEffect(() => {
+    if (center) {
+      map.flyTo(center, 15);
+    }
+  }, [center, map]);
+  return null;
+}
+
 export default function SubmitReport() {
   const navigate = useNavigate();
   const { addReport } = useReports();
@@ -57,6 +79,9 @@ export default function SubmitReport() {
   const [toast, setToast] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
+  const [mapCenter, setMapCenter] = useState([9.95, 78.15]);
+  const [gpsPin, setGpsPin] = useState(null);
+
   function handleImageChange(e) {
     const file = e.target.files[0];
     if (!file) return;
@@ -64,9 +89,25 @@ export default function SubmitReport() {
     setImagePreviewUrl(URL.createObjectURL(file));
   }
 
-  function handleMockGps() {
-    const loc = MOCK_LOCATIONS[Math.floor(Math.random() * MOCK_LOCATIONS.length)];
-    setLocationText(loc);
+  function handleGps() {
+    if (!navigator.geolocation) {
+      setToast({ message: "Geolocation is not supported by your browser.", type: "error" });
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        const latLongStr = `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
+        setLocationText(`Current Location (${latLongStr})`);
+        setGpsPin({ lat: latitude, lng: longitude });
+        setMapCenter([latitude, longitude]);
+        setErrors((p) => ({ ...p, locationText: undefined }));
+      },
+      (error) => {
+        setToast({ message: "Failed to get location. Please allow location access.", type: "error" });
+      }
+    );
   }
 
   function validate() {
@@ -184,7 +225,7 @@ export default function SubmitReport() {
               />
               <button
                 type="button"
-                onClick={handleMockGps}
+                onClick={handleGps}
                 className="h-14 px-4 bg-white border-2 border-slate-200 rounded-xl flex items-center gap-2 hover:border-[#13ecc8] transition-colors text-sm font-bold text-[#4c9a8d]"
               >
                 <span className="material-symbols-outlined text-[18px]">my_location</span>
@@ -245,18 +286,40 @@ export default function SubmitReport() {
 
           {/* Location Map Widget */}
           <div className="space-y-3">
-            <label className="block text-sm font-bold uppercase tracking-wider text-[#0d1b19]/70">Pin Location</label>
-            <div className="relative w-full h-64 rounded-xl overflow-hidden border-2 border-slate-200">
-              <img
-                className="w-full h-full object-cover opacity-60"
-                src="https://lh3.googleusercontent.com/aida-public/AB6AXuCV98jNWCxlYve-cS1uTK_IW_F87TCdzrGNI1Aap7wVNTsjpe7hEYg8d9uHWMMBUSTJrx6uv5CsGf6V9xUpYOfNbQKanLlcIj5Ok1jpviyh9mv8CLFQZ2_75t57a4ORtEaFw4anrsiZ2FlwL8y0tPzniwiADsm7DeqZNIqv6eivBYio9z2A785WDDnfCJjxDXe7EDb7xmDyIdKKZ-99GQVsj371Fj-H9sqc9S2XNIIJ8VcqDpoAUHE_BZe2xARO1GcfXFRtx0ZMaZUc"
-                alt="Map"
-              />
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="bg-white px-4 py-2 rounded-full shadow-xl flex items-center gap-2 border border-[#13ecc8]">
+            <label className="block text-sm font-bold uppercase tracking-wider text-[#0d1b19]/70">Select Location on Map</label>
+            <div className="relative w-full h-64 rounded-xl overflow-hidden border-2 border-slate-200 z-0">
+              <MapContainer center={mapCenter} zoom={11} scrollWheelZoom={false} className="w-full h-full z-0">
+                <MapUpdater center={mapCenter} />
+                <TileLayer
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                />
+                {MOCK_LOCATIONS.map((loc, idx) => (
+                  <Marker
+                    key={idx}
+                    position={[loc.lat, loc.lng]}
+                    eventHandlers={{ click: () => { setLocationText(loc.name); setErrors((p) => ({ ...p, locationText: undefined })); } }}
+                  >
+                    <Popup className="font-[Public_Sans,sans-serif] font-bold text-[#0d1b19]">
+                      {loc.name}<br />
+                      <span className="text-xs font-normal text-[#4c9a8d]">Click to select</span>
+                    </Popup>
+                  </Marker>
+                ))}
+                {gpsPin && (
+                  <Marker position={[gpsPin.lat, gpsPin.lng]}>
+                    <Popup className="font-[Public_Sans,sans-serif] font-bold text-[#0d1b19]">
+                      Your Current Location<br />
+                      <span className="text-xs font-normal text-[#4c9a8d]">Selected</span>
+                    </Popup>
+                  </Marker>
+                )}
+              </MapContainer>
+              <div className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center justify-center z-[1000] pointer-events-none">
+                <div className="bg-white/90 backdrop-blur px-4 py-2 rounded-full shadow-lg flex items-center gap-2 border border-[#13ecc8]">
                   <span className="material-symbols-outlined text-[#13ecc8]">location_on</span>
-                  <span className="text-sm font-bold">
-                    {locationText || "Adjust pin on map"}
+                  <span className="text-sm font-bold truncate max-w-[200px] sm:max-w-[300px]">
+                    {locationText || "Select a pin on the map"}
                   </span>
                 </div>
               </div>
