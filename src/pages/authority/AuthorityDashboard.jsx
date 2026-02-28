@@ -137,15 +137,15 @@ export default function AuthorityDashboard() {
         </div>
         <nav className="flex-1 px-4 space-y-1 mt-4">
           {[
-            { icon: "dashboard", label: "Dashboard", active: true },
-            { icon: "delete", label: "Waste Reports" },
-            { icon: "recycling", label: "Plastic Tracking" },
-            { icon: "group", label: "Sanitation Teams" },
-            { icon: "location_on", label: "Bin Locations" },
-          ].map(({ icon, label, active }) => (
-            <a
+            { icon: "dashboard", label: "Dashboard", active: true, to: "/admin-dashboard" },
+            { icon: "delete", label: "Waste Reports", to: "#" },
+            { icon: "recycling", label: "Plastic Tracking", to: "#" },
+            { icon: "group", label: "Sanitation Teams", to: "#" },
+            { icon: "location_on", label: "Bin Locations", to: "#" },
+          ].map(({ icon, label, active, to }) => (
+            <Link
               key={label}
-              href="#"
+              to={to}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${active
                 ? "bg-[#13ecc8]/10 text-[#13ecc8]"
                 : "text-slate-600 hover:bg-slate-50"
@@ -153,8 +153,17 @@ export default function AuthorityDashboard() {
             >
               <span className="material-symbols-outlined text-[20px]">{icon}</span>
               <span className="text-sm font-medium">{label}</span>
-            </a>
+            </Link>
           ))}
+          {/* Event Intelligence Special Link */}
+          <Link
+            to="/event-intelligence"
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors bg-gradient-to-r from-violet-50 to-purple-50 text-violet-700 border border-violet-200 hover:border-violet-400 mt-2"
+          >
+            <span className="material-symbols-outlined text-[20px]">auto_awesome</span>
+            <span className="text-sm font-bold">Event Intelligence</span>
+            <span className="ml-auto text-[10px] font-bold bg-violet-600 text-white px-1.5 py-0.5 rounded-full">AI</span>
+          </Link>
         </nav>
         <div className="p-4 border-t border-slate-200">
           <Link
@@ -177,7 +186,7 @@ export default function AuthorityDashboard() {
                   <path d="M4 42.4379C4 42.4379 14.0962 36.0744 24 41.1692C35.0664 46.8624 44 42.2078 44 42.2078L44 7.01134C44 7.01134 35.068 11.6577 24.0031 5.96913C14.0971 0.876274 4 7.27094 4 7.27094L4 42.4379Z" />
                 </svg>
               </div>
-              <h2 className="text-[#0d1b19] text-lg font-bold tracking-tight">Clean Madurai AI</h2>
+              <h2 className="text-[#0d1b19] text-lg font-bold tracking-tight">Thooim<span className="text-blue-500">ai</span></h2>
             </div>
             <div className="max-w-md w-full relative">
               <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[20px]">search</span>

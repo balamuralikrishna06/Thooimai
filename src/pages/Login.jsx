@@ -66,7 +66,7 @@ export default function Login() {
                     <div className="inline-flex items-center justify-center size-12 bg-[#13ecc8]/20 text-[#13ecc8] rounded-xl mb-4">
                         <span className="material-symbols-outlined text-3xl">location_city</span>
                     </div>
-                    <h1 className="text-2xl font-bold text-[#0d1b19] tracking-tight">Thooimai AI</h1>
+                    <h1 className="text-2xl font-bold text-[#0d1b19] tracking-tight">Thooim<span className="text-blue-500">ai</span></h1>
                     <p className="text-slate-500 text-sm mt-1">{isLogin ? "Sign in to your account" : "Create a new account"}</p>
                 </div>
 
