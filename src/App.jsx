@@ -5,6 +5,7 @@ import Login from "./pages/Login";
 import CitizenHome from "./pages/citizen/CitizenHome";
 import SubmitReport from "./pages/citizen/SubmitReport";
 import AuthorityDashboard from "./pages/authority/AuthorityDashboard";
+import EventIntelligence from "./pages/authority/EventIntelligence";
 import WorkerDashboard from "./pages/worker/WorkerDashboard";
 
 // RBAC Protected Route Component
@@ -39,6 +40,14 @@ export default function App() {
               element={
                 <ProtectedRoute allowedRoles={['admin']}>
                   <AuthorityDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/event-intelligence"
+              element={
+                <ProtectedRoute allowedRoles={['admin']}>
+                  <EventIntelligence />
                 </ProtectedRoute>
               }
             />
