@@ -42,6 +42,27 @@ export function ReportsProvider({ children }) {
     // Only fetch once user and role are established
     if (user && role) {
       fetchReports();
+
+      // Subscribe to real-time changes
+      const channel = supabase
+        .channel('schema-db-changes')
+        .on(
+          'postgres_changes',
+          {
+            event: '*', // Listen for ALL events (INSERT, UPDATE, DELETE)
+            schema: 'public',
+            table: 'issue_reports',
+          },
+          (payload) => {
+            console.log('Real-time update received:', payload);
+            fetchReports(); // Refresh the list to get full data (including nested joins)
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
     } else {
       setReports([]); // Clear reports if logged out
     }

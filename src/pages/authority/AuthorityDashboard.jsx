@@ -292,7 +292,7 @@ export default function AuthorityDashboard() {
               <table className="w-full text-left">
                 <thead>
                   <tr className="bg-slate-50/50 text-slate-500 text-[11px] uppercase tracking-wider font-bold">
-                    {["Citizen", "Category", "Location", "Score", "Status", "Assigned", "Reported", "Action"].map((h) => (
+                    {["Photo", "Citizen", "Category", "Location", "Score", "Status", "Assigned", "Reported", "Action"].map((h) => (
                       <th key={h} className="px-6 py-4 whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
@@ -307,6 +307,22 @@ export default function AuthorityDashboard() {
                   )}
                   {paginated.map((r) => (
                     <tr key={r.id} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="px-6 py-4">
+                        {r.image_url ? (
+                          <div className="size-10 rounded-lg overflow-hidden border border-slate-200 bg-slate-100 shrink-0">
+                            <img
+                              src={r.image_url}
+                              alt="Waste"
+                              className="w-full h-full object-cover cursor-pointer hover:scale-110 transition-transform"
+                              onClick={() => window.open(r.image_url, '_blank')}
+                            />
+                          </div>
+                        ) : (
+                          <div className="size-10 rounded-lg border border-slate-100 bg-slate-50 flex items-center justify-center text-slate-300">
+                            <span className="material-symbols-outlined text-[18px]">no_photography</span>
+                          </div>
+                        )}
+                      </td>
                       <td className="px-6 py-4 text-sm font-bold text-[#0d1b19] truncate max-w-[120px]" title={r.users?.name || "Unknown"}>
                         {r.users?.name || "Unknown Citizen"}
                       </td>
